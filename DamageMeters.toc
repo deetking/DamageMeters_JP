@@ -1,0 +1,22 @@
+## Interface: 20400
+## Title: DamageMeters
+## Title-deDE: SchadensAnzeige
+## Author: Kthana/Dandelion/Gnarfoz/AnduinLothar
+## Version: 5.8.8
+## Notes: Displays accumulated damage totals for you and nearby players.
+## Notes-deDE: Zeigt gesammelte Schadens- und andere Werte von dir und anderen Spielern an.
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## SavedVariables: DamageMeters_tables, DamageMeters_barCount, DamageMeters_quantity, DamageMeters_sort, DamageMeters_textOptions, DamageMeters_colorScheme, DamageMeters_autoCountLimit, DamageMeters_syncChannel, DamageMeters_loadedDataVersion, DamageMeters_pauseState, DamageMeters_quantityColor, DamageMeters_contributorList, DamageMeters_eventDataLevel, DamageMeters_textState, DamageMeters_debug4, DMT_ACTIVE, DMT_SAVED, DMT_VISIBLE, DamageMeters_quantitiesFilter, DamageMeters_tableInfo, DMTIMERMODE, DamageMeters_viewMode, DamageMeters_debugEnabled, DamageMeters_flags, DamageMeters_savedBarCount, DamageMeters_BARWIDTH, DamageMeters_pluginDMITable, DM_eventCaseTableDebug, DamageMetersFuDB, DamageMeters_reliabilityVersion
+## OptionalDependencies: FeatureFrame, Chronos, Titan, Fubar
+## X-Embeds: ChatThrottleLib
+## X-Revision: $Rev: 5187 $
+## X-Date: $Date: 2008-04-03 04:10:29 -0600 (Sun, 03 Feb 2008) $
+## X-Category: Meters
+## X-Website: http://www.cosmosui.org/addons.php?info=DamageMeters
+## X-Feedback: http://www.cosmosui.org/forums/
+## X-Localizations: enUS, deDE
+## X-CompatibleLocales: enUS, enGB, deDE
+DamageMeters.xml
+TitanDamageMeters\TitanDamageMeters.xml
+DamageMetersFu\DamageMetersFu.lua
