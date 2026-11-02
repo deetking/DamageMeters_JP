@@ -1925,13 +1925,49 @@ function DamageMeters_SetRelationship(index, relationship)
     return relationship;
 end
 
+function DamageMeters_ResolveEntityName(unitGUID, unitName)
+    if (unitName and unitName ~= "") then
+        return string.gsub(unitName, "-.+", "");
+    end
+
+    if (not unitGUID) then
+        return nil;
+    end
+
+    if (unitGUID == UnitGUID("player")) then
+        return UnitName("player");
+    end
+    if (UnitExists("pet") and unitGUID == UnitGUID("pet")) then
+        return UnitName("pet");
+    end
+
+    local groupMember = DamageMeters_GroupMembers[unitGUID];
+    if (groupMember and groupMember.name and groupMember.name ~= "") then
+        return groupMember.name;
+    end
+
+    local groupPet = DamageMeters_GroupMemberPets[unitGUID];
+    if (groupPet) then
+        return groupPet.name or groupPet.owner;
+    end
+
+    return nil;
+end
+
 function DamageMeters_AddValue(unitGUID, unitName, amount, crit, relationship, quantity, spell, damageType)
-    if (nil == unitName) then
-        DMPrint("DamageMeters: INTERNAL ERROR! unitName = nil.");
+    unitName = DamageMeters_ResolveEntityName(unitGUID, unitName);
+    if (not unitName or unitName == "") then
+        DMPrintD("DamageMeters: Skipping combat value with an unresolved unit name.");
         return 0;
     end
-    if (nil == quantity) then
-        DMPrint("DamageMeters: INTERNAL ERROR! quantity = nil.");
+    if (not quantity or not DM_QUANTDEFS[quantity]) then
+        DMPrintD("DamageMeters: Skipping combat value with an invalid quantity.");
+        return 0;
+    end
+    amount = tonumber(amount);
+    if (not amount or amount < 0) then
+        DMPrintD("DamageMeters: Skipping combat value with an invalid amount.");
+        return 0;
     end
 
     if (DM_UNKNOWNENTITY == unitName) then
@@ -1953,7 +1989,9 @@ function DamageMeters_AddValue(unitGUID, unitName, amount, crit, relationship, q
             end
             relationship = DamageMeters_Relation_SELF;
             unitName = UnitName("player");
-        elseif (DamageMeters_GroupMemberPets[unitGUID])
+        elseif (DamageMeters_GroupMemberPets[unitGUID] and
+            DamageMeters_GroupMemberPets[unitGUID].owner and
+            DamageMeters_GroupMemberPets[unitGUID].owner ~= "")
         then
             -- add pet-name to the spell name
             if (spell) then
@@ -1964,7 +2002,6 @@ function DamageMeters_AddValue(unitGUID, unitName, amount, crit, relationship, q
         end
     end
 
-    amount = tonumber(amount);
     relationship = tonumber(relationship);
     local currentTime = GetTime();
 
@@ -2413,48 +2450,54 @@ function DamageMeters_AddHealing(event, playerGUID, player, targetGUID, target, 
 
     -------------------------
     -- Absolute healing.
-    DamageMeters_StartDebugTimer(DMPROF_ADDVALUE);
-    DamageMeters_AddValue(playerGUID, player, amount, crit, relationship, DamageMeters_Quantity_ABSHEAL, spell);
-    DamageMeters_StopDebugTimer(DMPROF_ADDVALUE);
+    if (player and player ~= "") then
+        DamageMeters_StartDebugTimer(DMPROF_ADDVALUE);
+        DamageMeters_AddValue(playerGUID, player, amount, crit, relationship, DamageMeters_Quantity_ABSHEAL, spell);
+        DamageMeters_StopDebugTimer(DMPROF_ADDVALUE);
+    end
 
     -------------------------
     -- Overheal stuff.
     -- using DMT_ACTIVE instead of DMT_VISIBLE since overhealing was always zero.
-    local targetIndex = DamageMeters_GetPlayerIndex(target, DMT_ACTIVE);
-    local health = nil;
-    local maxHealth = nil;
-    local playerStruct;
-    if (targetIndex) then
-        playerStruct = DamageMeters_tables[DMT_ACTIVE][targetIndex];
-        if ((playerStruct.health ~= nil and playerStruct.health > 0) and (playerStruct.maxHealth ~= nil and playerStruct.maxHealth > 0)) then
-            health = playerStruct.health;
-            maxHealth = playerStruct.maxHealth;
-        end
-    else
-        -- If the given player isn't already in the list we still want to know if they are being overhealed.
-        -- Therefore, try to figure out their unitID.
-        local unitID = DamageMeters_GetUnitID(target, targetRelationship);
-        if (unitID) then
-            health = UnitHealth(unitID);
-            maxHealth = UnitHealthMax(unitID);
-        end
-    end
-
-    if (health ~= nil and maxHealth ~= nil) then
-        local newHealth = health + amount;
-        local overhealing = newHealth - maxHealth;
-        if (overhealing > 0) then
-            if (DamageMeters_debug4.showHealthChanges) then
-                DMPrintD(player.." overhealed "..target.." by "..overhealing.." ("..health.."/"..maxHealth..")", nil, true);
-            end
-            DamageMeters_AddValue(playerGUID, player, overhealing, crit, relationship, DamageMeters_Quantity_OVERHEAL, spell);
-
-            newHealth = maxHealth;
-            amount = maxHealth - health;
-        end
-
+    if (target and target ~= "") then
+        local targetIndex = DamageMeters_GetPlayerIndex(target, DMT_ACTIVE);
+        local health = nil;
+        local maxHealth = nil;
+        local playerStruct;
         if (targetIndex) then
-            playerStruct.health = newHealth;
+            playerStruct = DamageMeters_tables[DMT_ACTIVE][targetIndex];
+            if ((playerStruct.health ~= nil and playerStruct.health > 0) and (playerStruct.maxHealth ~= nil and playerStruct.maxHealth > 0)) then
+                health = playerStruct.health;
+                maxHealth = playerStruct.maxHealth;
+            end
+        else
+            -- If the given player isn't already in the list we still want to know if they are being overhealed.
+            -- Therefore, try to figure out their unitID.
+            local unitID = DamageMeters_GetUnitID(target, targetRelationship);
+            if (unitID) then
+                health = UnitHealth(unitID);
+                maxHealth = UnitHealthMax(unitID);
+            end
+        end
+
+        if (health ~= nil and maxHealth ~= nil) then
+            local newHealth = health + amount;
+            local overhealing = newHealth - maxHealth;
+            if (overhealing > 0) then
+                if (player and player ~= "") then
+                    if (DamageMeters_debug4.showHealthChanges) then
+                        DMPrintD(player.." overhealed "..target.." by "..overhealing.." ("..health.."/"..maxHealth..")", nil, true);
+                    end
+                    DamageMeters_AddValue(playerGUID, player, overhealing, crit, relationship, DamageMeters_Quantity_OVERHEAL, spell);
+                end
+
+                newHealth = maxHealth;
+                amount = maxHealth - health;
+            end
+
+            if (targetIndex) then
+                playerStruct.health = newHealth;
+            end
         end
     end
 
@@ -2462,14 +2505,22 @@ function DamageMeters_AddHealing(event, playerGUID, player, targetGUID, target, 
     -- Healing Done & Healing Taken
 
     --DMPrint("AddHealing: "..player.." healed "..target.." for "..amount);
-    DamageMeters_StartDebugTimer(DMPROF_ADDVALUE);
-    DamageMeters_AddValue(playerGUID, player, amount, crit, relationship, DamageMeters_Quantity_HEALING, spell);
-    DamageMeters_AddValue(targetGUID, target, amount, crit, targetRelationship, DamageMeters_Quantity_HEALINGRECEIVED, spell);
-    DamageMeters_StopDebugTimer(DMPROF_ADDVALUE);
+    if (player and player ~= "") then
+        DamageMeters_StartDebugTimer(DMPROF_ADDVALUE);
+        DamageMeters_AddValue(playerGUID, player, amount, crit, relationship, DamageMeters_Quantity_HEALING, spell);
+        DamageMeters_StopDebugTimer(DMPROF_ADDVALUE);
+    end
+    if (target and target ~= "") then
+        DamageMeters_StartDebugTimer(DMPROF_ADDVALUE);
+        DamageMeters_AddValue(targetGUID, target, amount, crit, targetRelationship, DamageMeters_Quantity_HEALINGRECEIVED, spell);
+        DamageMeters_StopDebugTimer(DMPROF_ADDVALUE);
+    end
 
     -------------------------
 
-    DamageMetersPlugin_AddHealing(event, player, target, amount, crit, relationship, targetRelationship, spell)
+    if (player and player ~= "" and target and target ~= "") then
+        DamageMetersPlugin_AddHealing(event, player, target, amount, crit, relationship, targetRelationship, spell)
+    end
 end
 
 function DamageMeters_Report(arg1)
@@ -6833,16 +6884,11 @@ function DamageMeters_ParseMessage(timestamp, event,
                    sourceGUID, sourceName, sourceFlags,
                    destGUID, destName, destFlags,
                    ...)
-    local spellid, spell, spellSchool, amount, school, resisted, blocked, absorbed, critical, glancing, crushing;
+    local spellid, spell, spellSchool, amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing;
     local damageType, sourceRelation, destRelation;
 
-    -- strip realm from names
-    if (sourceName) then
-        sourceName = string.gsub(sourceName, "-.+", "");
-    end
-    if (destName) then
-        destName = string.gsub(destName, "-.+", "");
-    end
+    sourceName = DamageMeters_ResolveEntityName(sourceGUID, sourceName);
+    destName = DamageMeters_ResolveEntityName(destGUID, destName);
 
     ----------------------
     -- CURING MESSAGES --
@@ -6865,7 +6911,7 @@ function DamageMeters_ParseMessage(timestamp, event,
             end
         end
 
-        if (spellFound) then
+        if (spellFound and sourceName and sourceName ~= "") then
             DamageMeters_AddValue(sourceGUID, sourceName, 1, DM_HIT, casterRelationship, DamageMeters_Quantity_CURING, spell);
         end
         return;
@@ -6910,8 +6956,19 @@ function DamageMeters_ParseMessage(timestamp, event,
             crit = DM_DOT;
         end
 
-        amount, school, resisted, blocked, absorbed, critical, glancing, crushing =
+        amount, overkill, school, resisted, blocked, absorbed, critical, glancing, crushing =
             select(argIndex, ...)
+        amount = tonumber(amount);
+        overkill = tonumber(overkill) or 0;
+        if (not amount or amount < 0) then
+            return;
+        end
+        if (overkill > 0) then
+            amount = math.max(0, amount - overkill);
+        end
+        if (amount == 0) then
+            return;
+        end
         if (critical) then
             crit = DM_CRT;
         end
@@ -6945,8 +7002,12 @@ function DamageMeters_ParseMessage(timestamp, event,
             damageType = DM_DMGTYPENAMES[7]; -- physical als default
         end
 
-        sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
-        destRelation   = DamageMeters_GetRelation(destGUID, destName, destFlags);
+        if (sourceName and sourceName ~= "") then
+            sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
+        end
+        if (destName and destName ~= "") then
+            destRelation = DamageMeters_GetRelation(destGUID, destName, destFlags);
+        end
 
         if (sourceRelation) then
             DamageMeters_AddDamage(event, sourceGUID, sourceName, destGUID, destName, amount, crit, sourceRelation, spell, damageType);
@@ -6964,7 +7025,12 @@ function DamageMeters_ParseMessage(timestamp, event,
         event == "SPELL_PERIODIC_HEAL")
     then
         local crit = DM_HIT;
-        spellid, spell, spellSchool, amount, critical = select(1, ...);
+        local overHealing;
+        spellid, spell, spellSchool, amount, overHealing, critical = select(1, ...);
+        amount = tonumber(amount);
+        if (not amount or amount <= 0) then
+            return;
+        end
 
         if (critical) then
             crit = DM_CRT;
@@ -6974,8 +7040,12 @@ function DamageMeters_ParseMessage(timestamp, event,
             damageType = DM_DMGTYPENAMES[7]; -- physical als default
         end
 
-        sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
-        destRelation   = DamageMeters_GetRelation(destGUID, destName, destFlags);
+        if (sourceName and sourceName ~= "") then
+            sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
+        end
+        if (destName and destName ~= "") then
+            destRelation = DamageMeters_GetRelation(destGUID, destName, destFlags);
+        end
 
         if (sourceRelation) then
             DamageMeters_AddHealing(event, sourceGUID, sourceName, destGUID, destName, amount, crit, sourceRelation, destRelation, spell);
@@ -6991,13 +7061,15 @@ function DamageMeters_ParseMessage(timestamp, event,
         -- This captures summonings of warlock and hunter pets and shaman totems.
         -- If it's from the player of the group, then mark the summoned pet/totem
         -- as a pet for the summoner, so that it's events are recorded.
-        sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
-        if (sourceRelation == DamageMeters_Relation_SELF or
-            sourceRelation == DamageMeters_Relation_PARTY)
-        then
-            DamageMeters_GroupMemberPets[destGUID] = {};
-            DamageMeters_GroupMemberPets[destGUID].owner = sourceName;
-            DamageMeters_GroupMemberPets[destGUID].name = destName;
+        if (sourceName and sourceName ~= "" and destGUID) then
+            sourceRelation = DamageMeters_GetRelation(sourceGUID, sourceName, sourceFlags);
+            if (sourceRelation == DamageMeters_Relation_SELF or
+                sourceRelation == DamageMeters_Relation_PARTY)
+            then
+                DamageMeters_GroupMemberPets[destGUID] = {};
+                DamageMeters_GroupMemberPets[destGUID].owner = sourceName;
+                DamageMeters_GroupMemberPets[destGUID].name = destName;
+            end
         end
     end
 
@@ -7049,13 +7121,13 @@ function DamageMeters_GetRelation(guid, name, flags, secondTry)
         DamageMeters_GroupMemberPets[guid])
     then
         relation = DamageMeters_Relation_PARTY;
-    elseif (bit.band(flags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == COMBATLOG_OBJECT_REACTION_FRIENDLY)
+    elseif (flags and bit.band(flags, COMBATLOG_OBJECT_REACTION_FRIENDLY) == COMBATLOG_OBJECT_REACTION_FRIENDLY)
     then
         relation = DamageMeters_Relation_FRIENDLY;
     end
 
     -- Sometimes party-/raid-pets aren't recognised.
-    if (relation == nil and
+    if (relation == nil and flags and
         (bit.band(flags, COMBATLOG_OBJECT_AFFILIATION_RAID) == COMBATLOG_OBJECT_AFFILIATION_RAID or
          bit.band(flags, COMBATLOG_OBJECT_AFFILIATION_PARTY) == COMBATLOG_OBJECT_AFFILIATION_PARTY))
     then
@@ -7728,4 +7800,3 @@ function DamageMetersPlugin_DropDownInitialize()
         end
     end
 end
-
